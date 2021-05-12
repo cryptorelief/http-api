@@ -1,5 +1,3 @@
-#Author: Pranav sqlalchemystry
-#DateTime: 2021-05-12 20:15:49.881593 IST
 
 import sys
 import os
