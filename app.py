@@ -1,106 +1,105 @@
-
-import sys
-import os
-sys.path.append("/opt/anaconda3/lib/python3.7/site-packages/")
-
+import json
 from flask import Flask,request
-from flask_sqlalchemy import SQLAlchemy
 from flask_sqlalchemy import sqlalchemy
 from sqlalchemy.dialects.postgresql import UUID
-
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.exc import SQLAlchemyError as err
 from credentials import USERNAME,PASSWORD,HOSTNAME,PORT,DB_NAME
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://{}:{}@{}:{}/{}".format(USERNAME,PASSWORD,HOSTNAME,PORT,DB_NAME)
 
-# create an engine
 pengine = sqlalchemy.create_engine("postgresql+psycopg2://{}:{}@{}:{}/{}".format(USERNAME,PASSWORD,HOSTNAME,PORT,DB_NAME))
-
-from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
-
-# reflect current database engine to metadata
 metadata = sqlalchemy.MetaData(pengine)
 metadata.reflect()
+
+# All the tables in the database (probably would be renamed in the future)
 
 class Demand(Base):
     __table__ = sqlalchemy.Table("Demands_old", metadata)
 
-# class Supply(Base):
-#     __table__ = sqlalchemy.Table("Supply", metadata)
-#
-# class Demand(Base):
-#     __table__ = sqlalchemy.Table("Demands_old", metadata)
-#
-# class Demand(Base):
-#     __table__ = sqlalchemy.Table("Demands_old", metadata)
+class Supply(Base):
+    __table__ = sqlalchemy.Table("Supply", metadata)
 
+class Matches(Base):
+    __table__ = sqlalchemy.Table("Demands_old", metadata)
 
-# call the session maker factory
+class Raw(Base):
+    __table__ = sqlalchemy.Table("Demands_old", metadata)
+
+# session object to talk with the db
 Session = sqlalchemy.orm.sessionmaker(pengine)
 session = Session()
 
-# filter a record
-# session.query(User).filter(User.id==1).first()
-
-
-db = SQLAlchemy(app)
-
-# class Demand(db.Model):
-#     __tablename__='Demands_old'
-#     id = db.Column(UUID(as_uuid=True), primary_key=True)
-#     help_needed = db.Column(db.String(200))
-
-
 # base_url = "api.covidbot.in"
-@app.get("/request")
-def get_demand():
-    r = request.args
-    r_dict = r.to_dict()
+
+def get_results(table):
+    r_dict = request.args.to_dict()
     after = r_dict.pop("after", None)
     before = r_dict.pop("before", None)
-
-    s = session.query(Demand).filter_by(r_dict)
+    s = session.query(table).filter_by(**r_dict)
     if after is not None:
-        s = s.filter(Demand.datetime>after)
+        s = s.filter(table.datetime>after)
     if before is not None:
-        s = s.filter(Demand.datetime<before)
+        s = s.filter(table.datetime<before)
     results = s.all()
+    return results
+
+def results_to_json(results):
+    if isinstance(results,list) is False:
+        return json.dumps(results)
     all_results = [vars(result) for result in results]
     final_result = []
     for result in all_results:
         final_result.append(dict([(k,v) for (k,v) in result.items() if not k.startswith("_")]))
     final_result_json = json.dumps(final_result,indent=4,default=str)
+    return final_result_json
+
+def put_results(table):
+    r_dict = request.args.to_dict()
+    try:
+        d = table(**r_dict)
+        session.add(d)
+        session.commit()
+        results = [d]
+        return results,200
+    except Exception as e:
+        return (str(e)),400
+
+@app.get("/request")
+def get_demand():
+    results = get_results(Demand)
+    return results_to_json(results)
 
 @app.get("/supply")
 def get_supply():
-    pass
+    results = get_results(Supply)
+    return results_to_json(results)
 
 @app.get("/matches")
 def get_matches():
-    pass
+    results = get_results(Matches)
+    return results_to_json(results)
 
 @app.get("/raw")
 def get_raw():
-    pass
+    results = get_results(Raw)
+    return results_to_json(results)
 
 @app.put("/request")
 def put_demand():
-    pass
+    results,status_code = put_results(Demand)
+    return results_to_json(results),status_code
 
 @app.put("/supply")
 def put_supply():
-    pass
+    results,status_code = put_results(Supply)
+    return results_to_json(results),status_code
 
 @app.put("/raw")
 def put_raw():
-    pass
-
-
-# @app.post("/")
-# def func():
-#     pass
-
+    results,status_code = put_results(Raw)
+    return results_to_json(results),status_code
 
 if __name__=="__main__":
     app.run(debug=True)
