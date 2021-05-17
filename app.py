@@ -16,16 +16,16 @@ metadata.reflect()
 # All the tables in the database (probably would be renamed in the future)
 
 class Demand(Base):
-    __table__ = sqlalchemy.Table("Demands_old", metadata)
+    __table__ = sqlalchemy.Table("Demand", metadata)
 
 class Supply(Base):
     __table__ = sqlalchemy.Table("Supply", metadata)
 
 class Matches(Base):
-    __table__ = sqlalchemy.Table("Demands_old", metadata)
+    __table__ = sqlalchemy.Table("Matches", metadata)
 
 class Raw(Base):
-    __table__ = sqlalchemy.Table("Demands_old", metadata)
+    __table__ = sqlalchemy.Table("Raw", metadata)
 
 # session object to talk with the db
 Session = sqlalchemy.orm.sessionmaker(pengine)
