@@ -66,6 +66,20 @@ def put_results(table):
     except Exception as e:
         return (str(e)),400
 
+def update_results(table):
+    r_dict = request.args.to_dict()
+    try:
+        s = session.query(Supply).filter_by(external_id=r_dict["external_id"]).first()
+        if s is None:
+            return [],400
+        for k in r_dict:
+            s.k = r_dict[k]
+        session.commit()
+        results = [s]
+        return results,200
+    except Exception as e:
+        return (str(e)),400
+
 @app.get("/request")
 def get_demand():
     results = get_results(Demand)
@@ -100,6 +114,26 @@ def put_supply():
 def put_raw():
     results,status_code = put_results(Raw)
     return results_to_json(results),status_code
+
+@app.put("/update/demand")
+def update_demand():
+    results,status_code = update_results(Demand)
+    return results_to_json(results)
+
+@app.put("/update/supply")
+def update_supply():
+    results,status_code = update_results(Supply)
+    return results_to_json(results)
+
+@app.put("/update/matches")
+def update_matches():
+    results,status_code = update_results(Matches)
+    return results_to_json(results)
+
+@app.put("/update/raw")
+def update_raw():
+    results,status_code = update_results(Raw)
+    return results_to_json(results)
 
 if __name__=="__main__":
     app.run(debug=True)
