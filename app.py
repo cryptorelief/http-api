@@ -83,7 +83,8 @@ def update_data(table):
         if s is None:
             return []
         for k in r_dict:
-            s.k = r_dict[k]
+            if(k!="external_uuid"):
+                s.k = r_dict[k]
         session.commit()
     except (SQLAlchemyError, ValueError) as e:
         return str(e)
