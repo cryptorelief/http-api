@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import datetime
 app = Flask(__name__)
 
-pengine = sqlalchemy.create_engine("postgresql+psycopg2://{}:{}@{}:{}/{}".format(USERNAME,PASSWORD,HOSTNAME,PORT,DB_NAME), pool_use_lifo=True, pool_pre_ping=True)
+pengine = sqlalchemy.create_engine("postgresql+psycopg2://{}:{}@{}:{}/{}".format(USERNAME,PASSWORD,HOSTNAME,PORT,DB_NAME))
 Base = declarative_base()
 metadata = sqlalchemy.MetaData(pengine)
 metadata.reflect()
@@ -30,22 +30,22 @@ class Raw(Base):
 Session = sqlalchemy.orm.sessionmaker(pengine)
 session = Session()
 
-def filter_data(table):
-    r_dict = request.args.to_dict()
+def filter(table):
+    args = request.args.to_dict()
     # special query parameters that are not table columns
-    verified_after = r_dict.pop("verified_after", None)
-    after = r_dict.pop("after", None)
-    before = r_dict.pop("before", None)
+    verified_after = args.pop("verified_after", None)
+    after = args.pop("after", None)
+    before = args.pop("before", None)
     try:
         verified_after = pd.to_datetime(verified_after)
         after = pd.to_datetime(after)
         before = pd.to_datetime(before)
     except:
         return "Invalid datetime format"
-    limit = r_dict.pop("limit", None)
+    limit = args.pop("limit", None)
     try:
         # construct the query
-        s = session.query(table).filter_by(**r_dict)
+        s = session.query(table).filter_by(**args)
         if after:
             s = s.filter(table.last_updated>after)
         if before:
@@ -64,32 +64,44 @@ def filter_data(table):
         return str(e)
 
 
-def insert_data(table):
-    r_dict = request.args.to_dict()
+def insert_or_update(table):
+    """Checks whether there is an id. If there is an id, """
+    data = request.get_json()
+    identifier = data.pop('id', None)
+    if identifier:
+        # user is attempting to update a record
+        return update(table, data, identifier)
+    else:
+        # user is attempting to insert a record
+        return insert(table, data)
+
+
+def insert(table, data):
     try:
-        d = table(**r_dict)
-        session.add(d)
+        record = table(**data)
+        session.add(record)
         session.commit()
-        results = [d]
+        session.refresh(record)
+        results = [record]
         return results
     except (SQLAlchemyError, ValueError) as e:
         return str(e)
 
 
-def update_data(table):
-    r_dict = request.args.to_dict()
+def update(table, data, identifier):
     try:
-        s = session.query(Supply).filter_by(external_uuid=r_dict["external_uuid"]).first()
-        if s is None:
-            return []
-        for k in r_dict:
-            if(k!="external_uuid"):
-                s.k = r_dict[k]
+        query = session.query(table).filter_by(id=identifier)
+        record = query.first()
+        if record is None:
+            return "Could not find record"
+        query.update(data)
+        # fetch newly updated record
         session.commit()
+        session.refresh(record)
     except (SQLAlchemyError, ValueError) as e:
         return str(e)
     else:
-        results = [s]
+        results = [record]
         return results
 
 
@@ -111,67 +123,49 @@ def generate_response(results):
 
 @app.get("/requests")
 def get_demand():
-    results = filter_data(Demand)
+    results = filter(Demand)
     return generate_response(results)
 
 
 @app.get("/supply")
 def get_supply():
-    results = filter_data(Supply)
+    results = filter(Supply)
     return generate_response(results)
 
 
 @app.get("/matches")
 def get_matches():
-    results = filter_data(Matches)
+    results = filter(Matches)
     return generate_response(results)
 
 
 @app.get("/raw")
 def get_raw():
-    results = filter_data(Raw)
+    results = filter(Raw)
     return generate_response(results)
 
 
-@app.put("/requests")
-def put_demand():
-    results,status_code = insert_data(Demand)
+@app.post("/requests")
+def post_demand():
+    results = insert_or_update(Demand)
     return generate_response(results)
 
 
-@app.put("/supply")
-def put_supply():
-    results,status_code = insert_data(Supply)
+@app.post("/supply")
+def post_supply():
+    results = insert_or_update(Supply)
     return generate_response(results)
 
 
-@app.put("/raw")
-def put_raw():
-    results,status_code = insert_data(Raw)
+@app.post("/matches")
+def post_matches():
+    results = insert_or_update(Matches)
     return generate_response(results)
 
 
-@app.put("/update/demand")
-def update_demand():
-    results,status_code = update_data(Demand)
-    return generate_response(results)
-
-
-@app.put("/update/supply")
-def update_supply():
-    results,status_code = update_data(Supply)
-    return generate_response(results)
-
-
-@app.put("/update/matches")
-def update_matches():
-    results,status_code = update_data(Matches)
-    return generate_response(results)
-
-
-@app.put("/update/raw")
-def update_raw():
-    results,status_code = update_data(Raw)
+@app.post("/raw")
+def post_raw():
+    results = insert_or_update(Raw)
     return generate_response(results)
 
 
