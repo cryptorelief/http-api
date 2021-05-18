@@ -79,7 +79,7 @@ def insert_data(table):
 def update_data(table):
     r_dict = request.args.to_dict()
     try:
-        s = session.query(Supply).filter_by(id=r_dict["id"]).first()
+        s = session.query(Supply).filter_by(external_uuid=r_dict["external_uuid"]).first()
         if s is None:
             return []
         for k in r_dict:
