@@ -4,9 +4,14 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
 from credentials import USERNAME,PASSWORD,HOSTNAME,PORT,DB_NAME
+from flask_jwt_extended import create_access_token,get_jwt_identity,jwt_required,JWTManager
+from werkzeug.security import safe_str_cmp
 import pandas as pd
 from datetime import datetime
+
 app = Flask(__name__)
+app.config['JWT_SECRET_KEY'] = 'a39c6c92e2bd7d37ef508a571cbc92f8' # TODO: To be changed into env_variable
+jwt = JWTManager(app)
 
 pengine = sqlalchemy.create_engine("postgresql+psycopg2://{}:{}@{}:{}/{}".format(USERNAME,PASSWORD,HOSTNAME,PORT,DB_NAME))
 Base = declarative_base()
@@ -25,6 +30,9 @@ class Matches(Base):
 
 class Raw(Base):
     __table__ = sqlalchemy.Table("Raw", metadata)
+
+class Auth(Base):
+    __table__ = sqlalchemy.Table("Auth", metadata)
 
 # Session object to talk with the db
 Session = sqlalchemy.orm.sessionmaker(pengine)
@@ -121,6 +129,36 @@ def generate_response(results):
     return {"data": final_result}
 
 
+@jwt.user_identity_loader
+def user_identity_lookup(user):
+    return user.id
+
+
+@jwt.user_lookup_loader
+def user_lookup_callback(_jwt_header, jwt_data):
+    identity = jwt_data["sub"]
+    return Auth.query.filter_by(id=identity).one_or_none()
+
+
+@app.post("/login")
+def login():
+    queries = request.args.to_dict()
+    username = queries.get("username")
+    password = queries.get("password")
+    if(username is not None and password is not None):
+        user = session.query(Auth).filter_by(username=username).first()
+        if(user):
+            if(safe_str_cmp(user.password.encode('utf-8'),password.encode('utf-8'))):
+                access_token = create_access_token(identity=user)
+                return {"access_token": access_token},200
+            else:
+                return {"error": "Password does not match."},401
+        else:
+            return {"error": "Username not found."},401
+    else:
+        return {"error": "Please provide both Username and Password."},401
+
+
 @app.get("/requests")
 def get_demand():
     results = filter(Demand)
@@ -145,24 +183,28 @@ def get_raw():
     return generate_response(results)
 
 
+@jwt_required()
 @app.post("/requests")
 def post_demand():
     results = insert_or_update(Demand)
     return generate_response(results)
 
 
+@jwt_required()
 @app.post("/supply")
 def post_supply():
     results = insert_or_update(Supply)
     return generate_response(results)
 
 
+@jwt_required()
 @app.post("/matches")
 def post_matches():
     results = insert_or_update(Matches)
     return generate_response(results)
 
 
+@jwt_required()
 @app.post("/raw")
 def post_raw():
     results = insert_or_update(Raw)
