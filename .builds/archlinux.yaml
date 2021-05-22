@@ -7,6 +7,8 @@ repositories: null
 shell: true
 secrets:
   - 8fdac794-0d89-4bbd-b3f2-57b5748594ea
+sources:
+  - https://github.com/cryptorelief/http-api
 environment:
   DOCKER_USER: 'cisrht'
 tasks:
