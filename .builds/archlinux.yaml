@@ -1,0 +1,27 @@
+---
+arch: null
+image: archlinux
+packages:
+  - docker
+repositories: null
+shell: true
+secrets:
+  - 8fdac794-0d89-4bbd-b3f2-57b5748594ea
+sources:
+  - https://github.com/cryptorelief/http-api
+environment:
+  DOCKER_USER: 'cisrht'
+tasks:
+  - setup: |
+      sudo mount -t tmpfs -o size=4G /dev/null /dev/shm
+      sudo systemctl start docker
+      sudo usermod -aG docker $(whoami)
+  - build: |
+      cat ~/hub_pat | sudo docker login -u "$DOCKER_USER" --password-stdin=true
+      cd http-api
+      COMMIT_HASH=$(git rev-parse --short HEAD)
+      docker build -t covidbot/http-api:${COMMIT_HASH} .
+      sudo docker push covidbot/http-api:${COMMIT_HASH}
+triggers: null
+
+# vim:ts=2:sw=2:sts=2
