@@ -20,7 +20,8 @@ tasks:
       cat ~/hub_pat | sudo docker login -u "$DOCKER_USER" --password-stdin=true
       cd http-api
       COMMIT_HASH=$(git rev-parse --short HEAD)
-      sudo docker build -t covidbot/http-api:${COMMIT_HASH} . --push
+      docker build -t covidbot/http-api:${COMMIT_HASH} .
+      sudo docker push covidbot/http-api:${COMMIT_HASH}
 triggers: null
 
 # vim:ts=2:sw=2:sts=2
