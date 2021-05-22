@@ -1,14 +1,10 @@
-FROM alpine:3.13 as builder
+FROM mavfav/alpandas:latest as builder
 
 WORKDIR /app
 RUN apk add --no-cache --update \
         postgresql-dev \
-        uwsgi-python3 \
-        python3-dev \
-        alpine-sdk \
-        py-pip
+        uwsgi-python3
 
-RUN python3 -m venv .venv && .venv/bin/pip install --no-cache-dir -U pip setuptools
 COPY requirements.txt .
 RUN .venv/bin/pip install --no-cache-dir -r requirements.txt && find /app/.venv \( -type d -a -name test -o -name tests \) -o \( -type f -a -name '*.pyc' -o -name '*.pyo' \) -exec rm -rf '{}' \+
 
