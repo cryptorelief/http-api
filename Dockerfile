@@ -17,6 +17,7 @@ EXPOSE 4444
 WORKDIR /app/http-api
 RUN apk add --no-cache --update \
         uwsgi-python3 \
+        libstdc++ \
         py-pip
 
 RUN mkdir -p /run/uwsgi/ \
