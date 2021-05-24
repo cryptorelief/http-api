@@ -1,42 +1,25 @@
 from flask import Flask, request
-from flask_sqlalchemy import sqlalchemy
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import SQLAlchemyError
-from credentials import USERNAME,PASSWORD,HOSTNAME,PORT,DB_NAME
 from flask_jwt_extended import create_access_token,get_jwt_identity,jwt_required,JWTManager
 from werkzeug.security import safe_str_cmp
 import pandas as pd
 from datetime import datetime
+from db import Demand, Supply, Raw, Matches, UserLog, Auth, get_session
 
 app = Flask(__name__)
 app.config['JWT_SECRET_KEY'] = 'a39c6c92e2bd7d37ef508a571cbc92f8' # TODO: To be changed into env_variable
+app.config["JWT_TOKEN_LOCATION"] = ["headers", "query_string"]
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = False
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = False
+
 jwt = JWTManager(app)
 
-pengine = sqlalchemy.create_engine("postgresql+psycopg2://{}:{}@{}:{}/{}".format(USERNAME,PASSWORD,HOSTNAME,PORT,DB_NAME))
-Base = declarative_base()
-metadata = sqlalchemy.MetaData(pengine)
-metadata.reflect()
 
-# All tables that can be queried using the API
-class Demand(Base):
-    __table__ = sqlalchemy.Table("Demand", metadata)
+def obj_to_dict(obj):
+    return dict([(k,v) for (k,v) in vars(obj).items() if not k.startswith("_")])
 
-class Supply(Base):
-    __table__ = sqlalchemy.Table("Supply", metadata)
-
-class Matches(Base):
-    __table__ = sqlalchemy.Table("Matches", metadata)
-
-class Raw(Base):
-    __table__ = sqlalchemy.Table("Raw", metadata)
-
-class Auth(Base):
-    __table__ = sqlalchemy.Table("Auth", metadata)
-
-# Session object to talk with the db
-Session = sqlalchemy.orm.sessionmaker(pengine)
-session = Session()
 
 def filter(table):
     args = request.args.to_dict()
@@ -51,22 +34,26 @@ def filter(table):
     except:
         return "Invalid datetime format"
     limit = args.pop("limit", None)
+    
     try:
         # construct the query
-        s = session.query(table).filter_by(**args)
-        if after:
-            s = s.filter(table.last_updated>after)
-        if before:
-            s = s.filter(table.last_updated<before)
-        if verified_after:
-            s = s.filter(table.last_verified_on>=verified_after)
-        # apply sensible defaults for ordering
-        s = s.order_by(sqlalchemy.text('verified desc, last_verified_on desc, last_updated desc'))
-        # NOTE: limit has to be applied after ordering
-        if limit:
-            s = s.limit(limit)
-        # run query
-        results = s.all()
+        results = []
+        with get_session() as session:
+            s = session.query(table).filter_by(**args)
+            if after:
+                s = s.filter(table.last_updated>after)
+            if before:
+                s = s.filter(table.last_updated<before)
+            if verified_after:
+                s = s.filter(table.last_verified_on>=verified_after)
+            # apply sensible defaults for ordering
+            s = s.order_by(text('verified desc, last_verified_on desc, last_updated desc'))
+            # NOTE: limit has to be applied after ordering
+            if limit:
+                s = s.limit(limit)
+            # run query
+            results = s.all()
+            results = [obj_to_dict(result) for result in results]            
         return results
     except (SQLAlchemyError, ValueError) as e:
         return str(e)
@@ -75,6 +62,7 @@ def filter(table):
 def insert_or_update(table):
     """Checks whether there is an id. If there is an id, """
     data = request.get_json()
+    data.pop('jwt', None)
     identifier = data.pop('id', None)
     if identifier:
         # user is attempting to update a record
@@ -86,11 +74,29 @@ def insert_or_update(table):
 
 def insert(table, data):
     try:
-        record = table(**data)
-        session.add(record)
-        session.commit()
-        session.refresh(record)
-        results = [record]
+        results = []
+        with get_session() as session:
+            user = session.query(Auth).filter_by(id=get_jwt_identity()).first()
+            record = table(**data)
+            ## create User Log
+            # {foreign key column: id of updated record}
+            fk = {"{}_id".format(table.__name__.lower()): record.id}
+            # update info (username, timestamp)
+            log = {"username": user.username, "last_updated": datetime.now()}
+            # all update info
+            log.update(fk)
+            # find if last updated already exists for username, <table>_id
+            existing = session.query(UserLog).filter_by(username=user.username, **fk).first()
+            if existing:
+                session.query(UserLog).update(log)
+            else:
+                session.add(UserLog(**log))
+            session.commit()
+            ## Insert new record into table
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            results = [obj_to_dict(record)]
         return results
     except (SQLAlchemyError, ValueError) as e:
         return str(e)
@@ -98,19 +104,38 @@ def insert(table, data):
 
 def update(table, data, identifier):
     try:
-        query = session.query(table).filter_by(id=identifier)
-        record = query.first()
-        if record is None:
-            return "Could not find record"
-        query.update(data)
-        # fetch newly updated record
-        session.commit()
-        session.refresh(record)
-    except (SQLAlchemyError, ValueError) as e:
-        return str(e)
-    else:
-        results = [record]
+        results = []
+        with get_session() as session:
+            user = session.query(Auth).filter_by(id=get_jwt_identity()).first()
+            query = session.query(table).filter_by(id=identifier)
+            record = query.first()
+            data.pop('jwt', None)
+            if record is None:
+                return "Could not find record"
+            ## create User Log
+            # {foreign key column: id of updated record}
+            fk = {"{}_id".format(table.__name__.lower()): record.id}
+            # update info (username, timestamp)
+            log = {"username": user.username, "last_updated": datetime.now()}
+            # all update info
+            log.update(fk)
+            # find if last updated already exists for username, <table>_id
+            existing = session.query(UserLog).filter_by(username=user.username, **fk).first()
+            if existing:
+                session.query(UserLog).update(log)
+            else:
+                session.add(UserLog(**log))
+            session.commit()
+            session.flush()
+            ## Update table with new data
+            query.update(data)
+            session.commit()
+            # fetch newly updated record
+            session.refresh(record)
+            results = [obj_to_dict(record)]
         return results
+    except (SQLAlchemyError,  ValueError) as e:
+        return str(e)
 
 
 def generate_response(results):
@@ -121,12 +146,8 @@ def generate_response(results):
     elif not isinstance(results, list):
         return {"error": "Invalid data received from server", "data": results}, 503
     # get all vars/children of the SQLAlchemy object
-    all_results = [vars(result) for result in results]
     # this also contains internal Python variables, so we remove those
-    final_result = []
-    for result in all_results:
-        final_result.append(dict([(k,v) for (k,v) in result.items() if not k.startswith("_")]))
-    return {"data": final_result}
+    return {"data": results}
 
 
 @jwt.user_identity_loader
@@ -137,7 +158,8 @@ def user_identity_lookup(user):
 @jwt.user_lookup_loader
 def user_lookup_callback(_jwt_header, jwt_data):
     identity = jwt_data["sub"]
-    return Auth.query.filter_by(id=identity).one_or_none()
+    with get_session() as session:
+        return session.query(Auth).filter_by(id=identity).one_or_none()
 
 
 @app.post("/login")
@@ -146,15 +168,16 @@ def login():
     username = queries.get("username")
     password = queries.get("password")
     if(username is not None and password is not None):
-        user = session.query(Auth).filter_by(username=username).first()
+        with get_session() as session:
+            user = session.query(Auth).filter_by(username=username).first()
         if(user):
             if(safe_str_cmp(user.password.encode('utf-8'),password.encode('utf-8'))):
                 access_token = create_access_token(identity=user)
-                return {"access_token": access_token},200
+                return {"access_token": access_token}, 200
             else:
-                return {"error": "Password does not match."},401
+                return {"error": "Authentication failed"}, 401
         else:
-            return {"error": "Username not found."},401
+            return {"error": "Authentication failed"}, 401
     else:
         return {"error": "Please provide both Username and Password."},401
 
@@ -183,29 +206,29 @@ def get_raw():
     return generate_response(results)
 
 
-@jwt_required()
 @app.post("/requests")
+@jwt_required()
 def post_demand():
     results = insert_or_update(Demand)
     return generate_response(results)
 
 
-@jwt_required()
 @app.post("/supply")
+@jwt_required()
 def post_supply():
     results = insert_or_update(Supply)
     return generate_response(results)
 
 
-@jwt_required()
 @app.post("/matches")
+@jwt_required()
 def post_matches():
     results = insert_or_update(Matches)
     return generate_response(results)
 
 
-@jwt_required()
 @app.post("/raw")
+@jwt_required()
 def post_raw():
     results = insert_or_update(Raw)
     return generate_response(results)
