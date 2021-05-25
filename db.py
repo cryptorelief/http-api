@@ -1,3 +1,4 @@
+from geoalchemy2 import Geometry  # <= not used but must be imported
 from flask_sqlalchemy import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from credentials import USERNAME, PASSWORD, HOSTNAME, PORT, DB_NAME
