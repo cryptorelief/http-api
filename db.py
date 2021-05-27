@@ -19,6 +19,8 @@ Raw = Base.classes.Raw
 Matches = Base.classes.Matches
 Auth = Base.classes.Auth
 UserLog = Base.classes.UserLog
+Contact = Base.classes.Contact
+
 """
 class Demand(Base):
     __table__ = sqlalchemy.Table("Demand", metadata)

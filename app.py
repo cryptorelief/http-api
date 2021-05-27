@@ -1,19 +1,19 @@
 from flask import Flask, request
-from sqlalchemy import text
+from sqlalchemy import func, and_
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.exc import SQLAlchemyError
 from flask_jwt_extended import create_access_token,get_jwt_identity,jwt_required,JWTManager
 from werkzeug.security import safe_str_cmp
 import pandas as pd
 from datetime import datetime
-from db import Demand, Supply, Raw, Matches, UserLog, Auth, get_session
+from db import Demand, Supply, Raw, Matches, UserLog, Auth, Contact, get_session
+from sqlalchemy.sql.expression import desc, nulls_last
 
 app = Flask(__name__)
 app.config['JWT_SECRET_KEY'] = 'a39c6c92e2bd7d37ef508a571cbc92f8' # TODO: To be changed into env_variable
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "query_string"]
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = False
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = False
-
 jwt = JWTManager(app)
 
 
@@ -21,7 +21,7 @@ def obj_to_dict(obj):
     return dict([(k,v) for (k,v) in vars(obj).items() if not k.startswith("_")])
 
 
-def filter(table):
+def search(table):
     args = request.args.to_dict()
     # special query parameters that are not table columns
     verified_after = args.pop("verified_after", None)
@@ -47,7 +47,8 @@ def filter(table):
             if verified_after:
                 s = s.filter(table.last_verified_on>=verified_after)
             # apply sensible defaults for ordering
-            s = s.order_by(text('verified desc, last_verified_on desc, last_updated desc'))
+            if table == Supply:
+                s = s.order_by(and_(nulls_last(desc(Supply.verified)), nulls_last(desc(Supply.last_verified_on)), nulls_last(desc(Supply.last_updated))))
             # NOTE: limit has to be applied after ordering
             if limit:
                 s = s.limit(limit)
@@ -138,6 +139,51 @@ def update(table, data, identifier):
         return str(e)
 
 
+def find_matches():
+    args = request.args.to_dict()
+    source = args.get("source", "")
+    if source.lower()=="telegram":
+        tg_user_id = args.get("tg_user_id", "")
+        handle = args.get("user_handle", "")
+        contact = None
+        with get_session() as session:
+            if tg_user_id:
+                contact = session.query(Contact).filter_by(tg_user_id=tg_user_id).first()
+            if not (tg_user_id or contact) and handle:
+                contact = session.query(Contact).filter_by(user_handle=handle).first()
+            if not contact:
+                contact = Contact(source="telegram", user_handle=handle, tg_user_id=tg_user_id, bot_activated=True)
+                with get_session() as session:
+                    session.add(contact)
+                    session.commit()
+                    session.refresh(contact)
+                    return []
+            demands = session.query(Demand).filter_by(contact=contact).order_by(nulls_last(desc(Demand.datetime))).limit(100).all()
+            if not demands:
+                return "You have not submitted any requests. Please click on /find to submit a request"
+            new_matches = []
+            for demand in demands:
+                session.query(func.match_demand_to_new_supply(demand.id)).all()
+                matches = session.query(Matches).filter_by(demand=demand, sent=False).order_by(desc(Matches.created_on)).limit(10).all()
+                if not matches:
+                    continue
+                supply_ids = [match.supply_id for match in matches]
+                supplies = session.query(Supply).filter(Supply.id.in_(supply_ids)).all()
+                if not supplies:
+                    return "No new results found"
+                key = ", ".join(filter(None, [demand.resource, demand.category, demand.location_text, demand.phone]))
+                if not key:
+                    return "Invalid request detected"
+                value = ["{}: {}".format(supply.title, supply.phone) for supply in supplies]
+                new_matches.append(dict([(key, value)]))
+                for match in matches:
+                    match.sent = True
+                session.bulk_save_objects(matches)
+            if new_matches:
+                return new_matches
+            else:
+                return "No new results found"
+
 def generate_response(results):
     """Converts results (empty list, list of vars (incl. internal vars), or string) into a response-friendly object"""
     # if result was a string, it's an error
@@ -184,25 +230,25 @@ def login():
 
 @app.get("/requests")
 def get_demand():
-    results = filter(Demand)
+    results = search(Demand)
     return generate_response(results)
 
 
 @app.get("/supply")
 def get_supply():
-    results = filter(Supply)
+    results = search(Supply)
     return generate_response(results)
 
 
-@app.get("/matches")
+@app.get("/results")
 def get_matches():
-    results = filter(Matches)
+    results = find_matches()
     return generate_response(results)
 
 
 @app.get("/raw")
 def get_raw():
-    results = filter(Raw)
+    results = search(Raw)
     return generate_response(results)
 
 
@@ -217,13 +263,6 @@ def post_demand():
 @jwt_required()
 def post_supply():
     results = insert_or_update(Supply)
-    return generate_response(results)
-
-
-@app.post("/matches")
-@jwt_required()
-def post_matches():
-    results = insert_or_update(Matches)
     return generate_response(results)
 
 
