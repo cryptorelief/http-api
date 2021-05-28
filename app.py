@@ -50,7 +50,7 @@ def search(table):
                 s = s.filter(table.last_verified_on>=verified_after)
             # apply sensible defaults for ordering
             if table == Supply:
-                s = s.order_by(and_(nulls_last(desc(Supply.verified)), nulls_last(desc(Supply.last_verified_on)), nulls_last(desc(Supply.last_updated))))
+                s = s.order_by((nulls_last(desc(Supply.verified)), nulls_last(desc(Supply.last_verified_on)), nulls_last(desc(Supply.last_updated))))
             # NOTE: limit has to be applied after ordering
             if limit:
                 s = s.limit(limit)
