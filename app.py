@@ -8,9 +8,10 @@ import pandas as pd
 from datetime import datetime
 from db import Demand, Supply, Raw, Matches, UserLog, Auth, Contact, get_session
 from sqlalchemy.sql.expression import desc, nulls_last
+from credentials import JWT_KEY
 
 app = Flask(__name__)
-app.config['JWT_SECRET_KEY'] = 'a39c6c92e2bd7d37ef508a571cbc92f8' # TODO: To be changed into env_variable
+app.config['JWT_SECRET_KEY'] = JWT_KEY
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "query_string"]
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = False
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = False
@@ -34,7 +35,7 @@ def search(table):
     except:
         return "Invalid datetime format"
     limit = args.pop("limit", None)
-    
+
     try:
         # construct the query
         results = []
@@ -54,7 +55,7 @@ def search(table):
                 s = s.limit(limit)
             # run query
             results = s.all()
-            results = [obj_to_dict(result) for result in results]            
+            results = [obj_to_dict(result) for result in results]
         return results
     except (SQLAlchemyError, ValueError) as e:
         return str(e)
