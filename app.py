@@ -28,6 +28,7 @@ def search(table):
     verified_after = args.pop("verified_after", None)
     after = args.pop("after", None)
     before = args.pop("before", None)
+        
     try:
         verified_after = pd.to_datetime(verified_after)
         after = pd.to_datetime(after)
@@ -75,10 +76,23 @@ def insert_or_update(table):
 
 
 def insert(table, data):
+    tg_user_id = args.pop("tg_user_id", None)
+    user_handle = args.pop("tg_user_handle", None)
+    source = args.pop("source", None)
+    contact_args = {}
+    if tg_user_id:
+        contact_args['tg_user_id'] = tg_user_id
+    if user_handle:
+        contact_args['user_handle'] = user_handle:
+    if source:
+        contact_args['source'] = source
     try:
         results = []
         with get_session() as session:
             user = session.query(Auth).filter_by(id=get_jwt_identity()).first()
+            if contact_args:
+                contact = session.query(Contact).filter_by(**contact_args).first()
+                data.update(contact=contact)
             record = table(**data)
             ## create User Log
             # {foreign key column: id of updated record}
