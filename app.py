@@ -50,7 +50,7 @@ def search(table):
                 s = s.filter(table.last_verified_on>=verified_after)
             # apply sensible defaults for ordering
             if table == Supply:
-                s = s.order_by((nulls_last(desc(Supply.verified)), nulls_last(desc(Supply.last_verified_on)), nulls_last(desc(Supply.last_updated))))
+                s = s.order_by(nulls_last(desc(Supply.verified)), nulls_last(desc(Supply.last_verified_on)), nulls_last(desc(Supply.last_updated)))
             # NOTE: limit has to be applied after ordering
             if limit:
                 s = s.limit(limit)
@@ -76,9 +76,9 @@ def insert_or_update(table):
 
 
 def insert(table, data):
-    tg_user_id = args.pop("tg_user_id", None)
-    user_handle = args.pop("tg_user_handle", None)
-    source = args.pop("source", None)
+    tg_user_id = data.pop("tg_user_id", None)
+    user_handle = data.pop("tg_user_handle", None)
+    source = data.pop("source", None)
     contact_args = {}
     if tg_user_id:
         contact_args['tg_user_id'] = tg_user_id
