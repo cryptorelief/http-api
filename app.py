@@ -83,7 +83,7 @@ def insert(table, data):
     if tg_user_id:
         contact_args['tg_user_id'] = tg_user_id
     if user_handle:
-        contact_args['user_handle'] = user_handle:
+        contact_args['user_handle'] = user_handle
     if source:
         contact_args['source'] = source
     try:
