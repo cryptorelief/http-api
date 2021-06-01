@@ -1,6 +1,5 @@
 ---
-arch: null
-image: archlinux
+image: alpine/latest
 packages:
   - docker
 repositories: null
@@ -13,9 +12,8 @@ environment:
   DOCKER_USER: 'cisrht'
 tasks:
   - setup: |
-      sudo mount -t tmpfs -o size=4G /dev/null /dev/shm
-      sudo systemctl start docker
-      sudo usermod -aG docker $(whoami)
+      sudo /etc/init.d/docker start
+      sudo addgroup $(whoami) docker
   - build: |
       cat ~/hub_pat | sudo docker login -u "$DOCKER_USER" --password-stdin=true
       cd http-api
