@@ -12,7 +12,7 @@ environment:
   DOCKER_USER: 'cisrht'
 tasks:
   - setup: |
-      sudo systemctl list-units
+      sudo systemctl list-units --no-pager
       sudo systemctl start docker
       sudo usermod -aG docker $(whoami)
   - build: |
