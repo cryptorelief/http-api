@@ -1,5 +1,5 @@
 ---
-image: debian/buster
+image: alpine/latest
 packages:
   - docker
 repositories: null
@@ -12,9 +12,8 @@ environment:
   DOCKER_USER: 'cisrht'
 tasks:
   - setup: |
-      sudo systemctl list-units --no-pager
       sudo systemctl start docker
-      sudo usermod -aG docker $(whoami)
+      sudo addgroup $(whoami) docker
   - build: |
       cat ~/hub_pat | sudo docker login -u "$DOCKER_USER" --password-stdin=true
       cd http-api
