@@ -1,6 +1,5 @@
 ---
-arch: null
-image: archlinux
+image: debian/buster
 packages:
   - docker
 repositories: null
