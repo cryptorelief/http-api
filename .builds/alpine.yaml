@@ -12,7 +12,7 @@ environment:
   DOCKER_USER: 'cisrht'
 tasks:
   - setup: |
-      sudo systemctl start docker
+      sudo /etc/init.d/docker start
       sudo addgroup $(whoami) docker
   - build: |
       cat ~/hub_pat | sudo docker login -u "$DOCKER_USER" --password-stdin=true
