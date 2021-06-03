@@ -130,7 +130,8 @@ def insert(table, data):
                 if not contact:
                     return f"Contact not found: {contact_lookup}"
                 data.update(contact=contact)
-            data['group_handle'] = "-1001367739196"
+            if table == Demand:
+                data['group_handle'] = "-1001367739196"
             record = table(**data)
             ## create User Log
             # {foreign key column: id of updated record}
