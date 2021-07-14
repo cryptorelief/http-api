@@ -98,14 +98,26 @@ def location_search():
 def insert_or_update(table):
     """Checks whether there is an id. If there is an id, """
     data = request.get_json()
-    data.pop('jwt', None)
-    identifier = data.pop('id', None)
-    if identifier:
-        # user is attempting to update a record
-        return update(table, data, identifier)
+    if type(data) == list:
+        resp = []
+        for d in data:
+            identifier = d.pop('id', None)
+            if identifier:
+                # user is attempting to update a record
+                resp.append(update(table, d, identifier))
+            else:
+                # user is attempting to insert a record
+                resp.append(insert(table, d))
+        return resp
     else:
-        # user is attempting to insert a record
-        return insert(table, data)
+        data.pop('jwt', None)
+        identifier = data.pop('id', None)
+        if identifier:
+            # user is attempting to update a record
+            return update(table, data, identifier)
+        else:
+            # user is attempting to insert a record
+            return insert(table, data)
 
 
 def insert(table, data):
